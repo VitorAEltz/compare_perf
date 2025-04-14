@@ -1,4 +1,4 @@
-# Performance Comparison Script
+# Serverless SQL Database Comparison (Azion x Cloudflare)
 
 This script is designed to compare the performance of two different API endpoints: Cloudflare and Azion. It sends a series of requests to each endpoint and measures the response times, providing a detailed comparison of their performance.
 
