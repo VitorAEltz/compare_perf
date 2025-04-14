@@ -31,6 +31,17 @@ This script is designed to compare the performance of two different API endpoint
 - The script uses hardcoded API URLs and authorization tokens. Ensure these are correct and have the necessary permissions to access the endpoints.
 - Update the `cloudflareURL`, `cfHeaders`, `azionURL`, and `azionHeaders` in `compare.js` if needed.
 
+### Environment Variables
+
+Create a `.env` file in the root of the project to store your API keys. Add the following lines to the `.env` file:
+
+```
+azion_token=your_azion_token_here
+cloudflare_key=your_cloudflare_key_here
+```
+
+Replace `your_azion_token_here` and `your_cloudflare_key_here` with your actual Azion and Cloudflare API keys, respectively.
+
 ### Running the Script
 
 To execute the performance comparison, run the following command:

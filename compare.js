@@ -1,4 +1,6 @@
+require('dotenv').config();
 const axios = require('axios');
+const fs = require('fs');
 
 // Número de iterações
 const iterations = 100;
@@ -9,7 +11,7 @@ const iterations = 100;
 const cloudflareURL = 'https://api.cloudflare.com/client/v4/accounts/5ef6cc9b9e0a6ce036b164ebc89df556/d1/database/95d289ab-d18f-42ad-83e4-1208c6877a4d/query';
 const cfHeaders = {
   'Content-Type': 'application/json',
-  'Authorization': 'Bearer patNmZ05k9_BBF7EtZJqDCCzuqwM9TfAFdYL6Q2N'
+  'Authorization': `Bearer ${process.env.cloudflare_key}`
 };
 const cfBody = {
   sql: "SELECT * FROM Customers;"
@@ -18,7 +20,7 @@ const cfBody = {
 const azionURL = 'https://api.azion.com/v4/edge_sql/databases/1174/query';
 const azionHeaders = {
   'Accept': 'application/json',
-  'Authorization': 'Token azionc925bea4292d5e4146b1ae08e932429ce6d',
+  'Authorization': `Token ${process.env.azion_token}`,
   'Content-Type': 'application/json'
 };
 const azionBody = {
@@ -108,21 +110,33 @@ async function main() {
   await runCloudflare();
   await runAzion();
 
+  const output = [];
+  output.push("Tabela Comparativa de Performance (em ms):");
+  output.push("Iteração | Cloudflare (ms) | Azion (ms)");
+  output.push("---------|-----------------|-----------");
+  for (let i = 0; i < iterations; i++) {
+    const cfTime = cloudflareTimings[i] !== undefined ? cloudflareTimings[i].toFixed(4) : "N/A";
+    const azTime = azionTimings[i] !== undefined ? azionTimings[i].toFixed(4) : "N/A";
+    output.push(`${(i + 1).toString().padStart(8)} | ${cfTime.toString().padStart(15)} | ${azTime.toString().padStart(9)}`);
+  }
+
   printTable();
 
   if (cloudflareTimings.length > 0 && azionTimings.length > 0) {
     const cfStats = calculateStats(cloudflareTimings);
     const azStats = calculateStats(azionTimings);
 
-    console.log("\nResumo de Performance (em ms):");
-    console.log("Métrica    | Cloudflare (ms)    | Azion (ms)");
-    console.log("-----------|--------------------|------------");
-    console.log(`Mínimo    | ${cfStats.min.toFixed(4).padStart(18)} | ${azStats.min.toFixed(4).padStart(10)}`);
-    console.log(`Máximo    | ${cfStats.max.toFixed(4).padStart(18)} | ${azStats.max.toFixed(4).padStart(10)}`);
-    console.log(`Média     | ${cfStats.avg.toFixed(4).padStart(18)} | ${azStats.avg.toFixed(4).padStart(10)}`);
+    output.push("\nResumo de Performance (em ms):");
+    output.push("Métrica    | Cloudflare (ms)    | Azion (ms)");
+    output.push("-----------|--------------------|------------");
+    output.push(`Mínimo    | ${cfStats.min.toFixed(4).padStart(18)} | ${azStats.min.toFixed(4).padStart(10)}`);
+    output.push(`Máximo    | ${cfStats.max.toFixed(4).padStart(18)} | ${azStats.max.toFixed(4).padStart(10)}`);
+    output.push(`Média     | ${cfStats.avg.toFixed(4).padStart(18)} | ${azStats.avg.toFixed(4).padStart(10)}`);
   } else {
-    console.log("\nNão foi possível calcular as estatísticas, pois houve erros na execução de uma ou ambas as requisições.");
+    output.push("\nNão foi possível calcular as estatísticas, pois houve erros na execução de uma ou ambas as requisições.");
   }
+
+  fs.writeFileSync('output.txt', output.join('\n'));
 }
 
 main();
