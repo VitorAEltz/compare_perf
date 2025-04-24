@@ -1,6 +1,6 @@
-# Serverless SQL Database Comparison (Azion x Cloudflare)
+# Serverless SQL Database Comparison (Azion x Cloudflare x Turso)
 
-This script is designed to compare the performance of two different API endpoints: Cloudflare and Azion. It sends a series of requests to each endpoint and measures the response times, providing a detailed comparison of their performance.
+This script is designed to compare the performance of three different SQL database providers: Cloudflare D1, Azion Edge SQL, and Turso. It sends a series of requests to each endpoint and measures the response times, providing a detailed comparison of their performance.
 
 ## Getting Started
 
@@ -38,21 +38,35 @@ Create a `.env` file in the root of the project to store your API keys. Add the 
 ```
 azion_token=your_azion_token_here
 cloudflare_key=your_cloudflare_key_here
+turso_token=your_turso_token_here
 ```
 
-Replace `your_azion_token_here` and `your_cloudflare_key_here` with your actual Azion and Cloudflare API keys, respectively.
+Replace the placeholders with your actual API keys for each provider.
 
 ### Running the Script
 
-To execute the performance comparison, run the following command:
+To execute the performance comparison for all providers, run the following command:
 ```bash
 node compare.js
+```
+
+You can also run the tests for a specific provider by using one of these flags:
+```bash
+node compare.js --cf      # Test Cloudflare only
+node compare.js --azion   # Test Azion only
+node compare.js --turso   # Test Turso only
 ```
 
 ### Output
 
 - The script will output the duration of each request to the console.
-- A summary table will be printed, showing the minimum, maximum, and average response times for both endpoints.
+- A summary table will be printed, showing the following performance metrics for all three providers:
+  - Minimum response time
+  - Maximum response time
+  - Average response time
+  - P95 (95th percentile) response time
+  - P99 (99th percentile) response time
+- All results are also saved to an `output.txt` file for future reference.
 
 ### Troubleshooting
 

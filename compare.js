@@ -2,6 +2,13 @@ require('dotenv').config();
 const axios = require('axios');
 const fs = require('fs');
 
+// Parse command line arguments
+const args = process.argv.slice(2);
+const runCloudflareOnly = args.includes('--cf');
+const runAzionOnly = args.includes('--azion');
+const runTursoOnly = args.includes('--turso');
+const runAll = !runCloudflareOnly && !runAzionOnly && !runTursoOnly;
+
 // Número de iterações
 const iterations = 100;
 
@@ -29,9 +36,22 @@ const azionBody = {
   ]
 };
 
+const tursoURL = 'https://my-db-vitoraeltz.aws-us-east-1.turso.io/v2/pipeline';
+const tursoHeaders = {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${process.env.turso_token}`
+};
+const tursoBody = {
+  requests: [
+    { type: "execute", stmt: { sql: "SELECT * FROM users" } },
+    { type: "close" }
+  ]
+};
+
 // Arrays para armazenar os timings extraídos
 let cloudflareTimings = [];
 let azionTimings = [];
+let tursoTimings = [];
 
 /**
  * Executa as 100 requisições para o endpoint Cloudflare,
@@ -81,6 +101,46 @@ async function runAzion() {
 }
 
 /**
+ * Executa as 100 requisições para o endpoint Turso,
+ * extraindo o campo query_duration_ms do JSON de resposta.
+ */
+async function runTurso() {
+  console.log("\nExecutando testes para o endpoint Turso (query_duration_ms)...");
+  for (let i = 0; i < iterations; i++) {
+    try {
+      const response = await axios.post(tursoURL, tursoBody, { headers: tursoHeaders });
+      // Extrai o tempo (query_duration_ms) do JSON
+      const duration = response.data.results[0].response.result.query_duration_ms;
+      tursoTimings.push(duration);
+      console.log(`Turso Iteração ${i + 1}: ${duration} ms`);
+    } catch (error) {
+      if (error.response) {
+        console.error(`Erro na iteração ${i + 1} (Turso):`, error.response.data);
+      } else {
+        console.error(`Erro na iteração ${i + 1} (Turso):`, error.message);
+      }
+    }
+  }
+}
+
+/**
+ * Calcula o valor do percentil P para um array de timings.
+ * @param {Array} timings - Array de tempos de resposta
+ * @param {Number} p - Percentil desejado (0-100)
+ * @returns {Number} - Valor do percentil P
+ */
+function calculatePercentile(timings, p) {
+  // Ordenar o array de forma crescente
+  const sorted = [...timings].sort((a, b) => a - b);
+  
+  // Calcular a posição do percentil
+  const index = Math.ceil((p / 100) * sorted.length) - 1;
+  
+  // Retornar o valor na posição calculada
+  return sorted[index];
+}
+
+/**
  * Calcula estatísticas (mínimo, máximo, média) para um array de timings.
  */
 function calculateStats(timings) {
@@ -89,51 +149,145 @@ function calculateStats(timings) {
   const min = Math.min(...timings);
   const max = Math.max(...timings);
   const avg = sum / count;
-  return { min, max, avg };
-}
-
-/**
- * Imprime uma tabela comparativa com os timings para cada iteração.
- */
-function printTable() {
-  console.log("\nTabela Comparativa de Performance (em ms):");
-  console.log("Iteração | Cloudflare (ms) | Azion (ms)");
-  console.log("---------|-----------------|-----------");
-  for (let i = 0; i < iterations; i++) {
-    const cfTime = cloudflareTimings[i] !== undefined ? cloudflareTimings[i].toFixed(4) : "N/A";
-    const azTime = azionTimings[i] !== undefined ? azionTimings[i].toFixed(4) : "N/A";
-    console.log(`${(i + 1).toString().padStart(8)} | ${cfTime.toString().padStart(15)} | ${azTime.toString().padStart(9)}`);
-  }
+  const p95 = calculatePercentile(timings, 95);
+  const p99 = calculatePercentile(timings, 99);
+  return { min, max, avg, p95, p99 };
 }
 
 async function main() {
-  await runCloudflare();
-  await runAzion();
+  // Run tests based on command line arguments
+  if (runAll || runCloudflareOnly) {
+    await runCloudflare();
+  }
+  
+  if (runAll || runAzionOnly) {
+    await runAzion();
+  }
+  
+  if (runAll || runTursoOnly) {
+    await runTurso();
+  }
 
   const output = [];
   output.push("Tabela Comparativa de Performance (em ms):");
-  output.push("Iteração | Cloudflare (ms) | Azion (ms)");
-  output.push("---------|-----------------|-----------");
+  
+  // Adjust table headers based on which providers were tested
+  let tableHeader = "Iteração";
+  let tableDivider = "---------";
+  
+  if (runAll || runCloudflareOnly) {
+    tableHeader += " | Cloudflare (ms)";
+    tableDivider += "|------------------";
+  }
+  
+  if (runAll || runAzionOnly) {
+    tableHeader += " | Azion (ms)";
+    tableDivider += "|------------";
+  }
+  
+  if (runAll || runTursoOnly) {
+    tableHeader += " | Turso (ms)";
+    tableDivider += "|------------";
+  }
+  
+  output.push(tableHeader);
+  output.push(tableDivider);
+  
+  // Generate table rows
   for (let i = 0; i < iterations; i++) {
-    const cfTime = cloudflareTimings[i] !== undefined ? cloudflareTimings[i].toFixed(4) : "N/A";
-    const azTime = azionTimings[i] !== undefined ? azionTimings[i].toFixed(4) : "N/A";
-    output.push(`${(i + 1).toString().padStart(8)} | ${cfTime.toString().padStart(15)} | ${azTime.toString().padStart(9)}`);
+    let row = `${(i + 1).toString().padStart(8)}`;
+    
+    if (runAll || runCloudflareOnly) {
+      const cfTime = cloudflareTimings[i] !== undefined ? cloudflareTimings[i].toFixed(4) : "N/A";
+      row += ` | ${cfTime.toString().padStart(15)}`;
+    }
+    
+    if (runAll || runAzionOnly) {
+      const azTime = azionTimings[i] !== undefined ? azionTimings[i].toFixed(4) : "N/A";
+      row += ` | ${azTime.toString().padStart(9)}`;
+    }
+    
+    if (runAll || runTursoOnly) {
+      const tuTime = tursoTimings[i] !== undefined ? tursoTimings[i].toFixed(4) : "N/A";
+      row += ` | ${tuTime.toString().padStart(9)}`;
+    }
+    
+    output.push(row);
   }
 
-  printTable();
+  // Print table to console
+  console.log("\n" + output.slice(0, 3).join("\n"));
+  for (let i = 3; i < output.length; i++) {
+    console.log(output[i]);
+  }
 
-  if (cloudflareTimings.length > 0 && azionTimings.length > 0) {
-    const cfStats = calculateStats(cloudflareTimings);
-    const azStats = calculateStats(azionTimings);
+  // Calculate and display statistics
+  const providersWithData = [];
+  const statsData = {};
+  
+  if ((runAll || runCloudflareOnly) && cloudflareTimings.length > 0) {
+    providersWithData.push("Cloudflare");
+    statsData.cloudflare = calculateStats(cloudflareTimings);
+  }
+  
+  if ((runAll || runAzionOnly) && azionTimings.length > 0) {
+    providersWithData.push("Azion");
+    statsData.azion = calculateStats(azionTimings);
+  }
+  
+  if ((runAll || runTursoOnly) && tursoTimings.length > 0) {
+    providersWithData.push("Turso");
+    statsData.turso = calculateStats(tursoTimings);
+  }
 
+  if (providersWithData.length > 0) {
     output.push("\nResumo de Performance (em ms):");
-    output.push("Métrica    | Cloudflare (ms)    | Azion (ms)");
-    output.push("-----------|--------------------|------------");
-    output.push(`Mínimo    | ${cfStats.min.toFixed(4).padStart(18)} | ${azStats.min.toFixed(4).padStart(10)}`);
-    output.push(`Máximo    | ${cfStats.max.toFixed(4).padStart(18)} | ${azStats.max.toFixed(4).padStart(10)}`);
-    output.push(`Média     | ${cfStats.avg.toFixed(4).padStart(18)} | ${azStats.avg.toFixed(4).padStart(10)}`);
+    
+    // Generate stats table header
+    let statsHeader = "Métrica   ";
+    let statsDivider = "----------";
+    
+    providersWithData.forEach(provider => {
+      if (provider === "Cloudflare") {
+        statsHeader += " | Cloudflare (ms)   ";
+        statsDivider += "|--------------------";
+      } else if (provider === "Azion") {
+        statsHeader += " | Azion (ms)        ";
+        statsDivider += "|--------------------";
+      } else if (provider === "Turso") {
+        statsHeader += " | Turso (ms)        ";
+        statsDivider += "|--------------------";
+      }
+    });
+    
+    output.push(statsHeader);
+    output.push(statsDivider);
+    
+    // Generate stats rows
+    const metrics = ["min", "max", "avg", "p95", "p99"];
+    const metricLabels = {
+      "min": "Mínimo   ",
+      "max": "Máximo   ",
+      "avg": "Média    ",
+      "p95": "P95      ",
+      "p99": "P99      "
+    };
+    
+    metrics.forEach(metric => {
+      let row = metricLabels[metric];
+      
+      providersWithData.forEach(provider => {
+        const value = statsData[provider.toLowerCase()][metric].toFixed(4);
+        row += ` | ${value.padStart(18)}`;
+      });
+      
+      output.push(row);
+      console.log(row);
+    });
   } else {
-    output.push("\nNão foi possível calcular as estatísticas, pois houve erros na execução de uma ou ambas as requisições.");
+    const errorMsg = "\nNão foi possível calcular as estatísticas, pois houve erros na execução das requisições.";
+    output.push(errorMsg);
+    console.log(errorMsg);
   }
 
   fs.writeFileSync('output.txt', output.join('\n'));
